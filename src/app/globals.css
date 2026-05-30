@@ -1,0 +1,17 @@
+* {
+  box-sizing: border-box;
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  min-height: 100vh;
+  background: linear-gradient(180deg, #f7f3eb 0%, #f4efe6 45%, #ede6da 100%);
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

@@ -124,6 +124,43 @@ src/
 	types/        Tipos y contratos TypeScript
 ```
 
+### Arquitectura del backend
+
+El backend sigue una arquitectura por capas orientada a API REST:
+
+- Controllers: exponen endpoints HTTP y validan entrada basica.
+- Services: concentran reglas de negocio (simulacion, aprobacion, rechazo y validaciones).
+- Repositories: encapsulan acceso a datos con Entity Framework Core.
+- Data: contiene el DbContext y configuracion de persistencia.
+- DTOs: definen contratos de entrada/salida para no exponer entidades directamente.
+
+Estructura principal del backend:
+
+```text
+FinTech.API/
+	Controllers/   Endpoints REST (Loans, Transactions)
+	Services/      Logica de negocio
+	Repositories/  Acceso a datos por interfaces/implementaciones
+	Data/          ApplicationDbContext
+	DTOs/          Contratos HTTP
+	Models/        Entidades de dominio
+	Migrations/    Migraciones EF Core
+	Program.cs     Composicion DI, CORS, Swagger, DbContext
+```
+
+Flujo de una solicitud:
+
+```text
+HTTP Request -> Controller -> Service -> Repository -> DbContext -> PostgreSQL
+```
+
+Notas de composicion:
+
+- Inyeccion de dependencias en Program.cs para services y repositories.
+- Configuracion de EF Core con Npgsql, retry on failure y query splitting.
+- Soporte de DATABASE_URL y RUN_MIGRATIONS para despliegue en Railway.
+- Swagger habilitado para documentacion y preba de endpoints.
+
 ### Patrones implementados
 
 - Separacion por capas: `services` encapsula llamadas HTTP y mapeo de datos; `components` se enfoca en UI y estado local.
@@ -136,6 +173,7 @@ src/
 
 
 ## Decisiones de diseno
+
 
 ### Por que se eligio Material UI
 

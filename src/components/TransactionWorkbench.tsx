@@ -43,7 +43,6 @@ export function TransactionWorkbench({ initialTransactions, loans }: Transaction
         loanId: null,
         description: "Pago de prueba desde frontend",
     });
-    const [isSubmitting, setIsSubmitting] = useState(false);
     const [message, setMessage] = useState<string | null>(null);
     const [error, setError] = useState<string | null>(null);
 
@@ -87,13 +86,10 @@ export function TransactionWorkbench({ initialTransactions, loans }: Transaction
     }
 
     function closeCreateDialog() {
-        if (!isSubmitting) {
-            setIsDialogOpen(false);
-        }
+        setIsDialogOpen(false);
     }
 
     async function submitTransaction() {
-        setIsSubmitting(true);
         setError(null);
         setMessage(null);
         try {
@@ -107,8 +103,6 @@ export function TransactionWorkbench({ initialTransactions, loans }: Transaction
             setIsDialogOpen(false);
         } catch (submissionError) {
             setError(submissionError instanceof Error ? submissionError.message : "Ocurrio un error al crear la transaccion.");
-        } finally {
-            setIsSubmitting(false);
         }
     }
 
@@ -219,9 +213,9 @@ export function TransactionWorkbench({ initialTransactions, loans }: Transaction
                     </Stack>
                 </DialogContent>
                 <DialogActions>
-                    <Button onClick={closeCreateDialog} disabled={isSubmitting}>Cancelar</Button>
-                    <Button onClick={submitTransaction} variant="contained" disabled={isSubmitting || form.amount <= 0 || !form.idempotencyKey.trim()}>
-                        {isSubmitting ? "Procesando..." : "Simular Pago"}
+                    <Button onClick={closeCreateDialog}>Cancelar</Button>
+                    <Button onClick={submitTransaction} variant="contained" disabled={form.amount <= 0}>
+                        Simular Pago
                     </Button>
                 </DialogActions>
             </Dialog>

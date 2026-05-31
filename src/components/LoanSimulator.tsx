@@ -15,6 +15,7 @@ import TextField from "@mui/material/TextField";
 import Typography from "@mui/material/Typography";
 import Link from "next/link";
 import { useMemo, useState } from "react";
+import axios from "axios";
 
 import { PaymentScheduleTable } from "@/components/PaymentScheduleTable";
 import { buildPaymentSchedule } from "@/lib/loanCalculator";
@@ -24,240 +25,289 @@ import type { Loan } from "@/types/loan";
 type RepaymentType = "FIXED" | "DECREASING";
 
 type LoanSimulatorForm = {
-  userId: string;
-  monthlyIncome: number;
-  amount: number;
-  tea: number;
-  term: number;
-  loanType: 0 | 1;
-  startDate: string;
+    userId: string;
+    monthlyIncome: number;
+    amount: number;
+    tea: number;
+    term: number;
+    loanType: 0 | 1;
+    startDate: string;
 };
 
 type LoanSimulatorProps = {
-  initialValues: LoanSimulatorForm;
+    initialValues: LoanSimulatorForm;
 };
 
+function getApiErrorMessage(error: unknown): string {
+    if (!axios.isAxiosError(error)) {
+        return "Ocurrio un error al crear el prestamo.";
+    }
+
+    const data = error.response?.data;
+    if (typeof data === "string" && data.trim().length > 0) {
+        return data;
+    }
+
+    if (data && typeof data === "object") {
+        const candidate = data as {
+            message?: unknown;
+            title?: unknown;
+            detail?: unknown;
+            errors?: Record<string, unknown>;
+        };
+
+        if (typeof candidate.message === "string" && candidate.message.trim().length > 0) {
+            return candidate.message;
+        }
+
+        if (typeof candidate.title === "string" && candidate.title.trim().length > 0) {
+            return candidate.title;
+        }
+
+        if (typeof candidate.detail === "string" && candidate.detail.trim().length > 0) {
+            return candidate.detail;
+        }
+
+        if (candidate.errors && typeof candidate.errors === "object") {
+            const messages = Object.values(candidate.errors)
+                .flatMap((value) => Array.isArray(value) ? value : [value])
+                .filter((value): value is string => typeof value === "string" && value.trim().length > 0);
+
+            if (messages.length > 0) {
+                return messages.join(" ");
+            }
+        }
+    }
+
+    if (typeof error.message === "string" && error.message.trim().length > 0) {
+        return error.message;
+    }
+
+    return "Ocurrio un error al crear el prestamo.";
+}
+
 function currency(value: number): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency: "USD",
-    maximumFractionDigits: 2,
-  }).format(value);
+    return new Intl.NumberFormat("en-US", {
+        style: "currency",
+        currency: "USD",
+        maximumFractionDigits: 2,
+    }).format(value);
 }
 
 export function LoanSimulator({ initialValues }: LoanSimulatorProps) {
-  const [form, setForm] = useState(initialValues);
-  const [createdLoan, setCreatedLoan] = useState<Loan | null>(null);
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
+    const [form, setForm] = useState(initialValues);
+    const [createdLoan, setCreatedLoan] = useState<Loan | null>(null);
+    const [isLoading, setIsLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
+    const [message, setMessage] = useState<string | null>(null);
 
-  const simulation = useMemo(
-    () =>
-      buildPaymentSchedule({
-        amount: form.amount,
-        tea: form.tea,
-        term: form.term,
-        repaymentType: form.loanType === 0 ? "FIXED" : "DECREASING",
-        startDate: form.startDate,
-      }),
-    [form.amount, form.tea, form.term, form.loanType, form.startDate],
-  );
+    const simulation = useMemo(
+        () =>
+            buildPaymentSchedule({
+                amount: form.amount,
+                tea: form.tea,
+                term: form.term,
+                repaymentType: form.loanType === 0 ? "FIXED" : "DECREASING",
+                startDate: form.startDate,
+            }),
+        [form.amount, form.tea, form.term, form.loanType, form.startDate],
+    );
 
-  const validations = useMemo(() => {
-    const issues: string[] = [];
-    if (!form.userId.trim()) issues.push("Usuario obligatorio.");
-    if (form.amount < 500 || form.amount > 50000) issues.push("Monto entre $500 y $50,000.");
-    if (form.term < 6 || form.term > 60) issues.push("Plazo entre 6 y 60 meses.");
-    if (form.tea < 18 || form.tea > 35) issues.push("TEA entre 18% y 35%.");
-    if (form.monthlyIncome <= 0) issues.push("Ingreso mensual debe ser mayor a 0.");
-    return issues;
-  }, [form]);
+    const validations = useMemo(() => {
+        const issues: string[] = [];
+        if (!form.userId.trim()) issues.push("Usuario obligatorio.");
+        if (form.amount < 500 || form.amount > 50000) issues.push("Monto entre $500 y $50,000.");
+        if (form.term < 6 || form.term > 60) issues.push("Plazo entre 6 y 60 meses.");
+        if (form.tea < 18 || form.tea > 35) issues.push("TEA entre 18% y 35%.");
+        if (form.monthlyIncome <= 0) issues.push("Ingreso mensual debe ser mayor a 0.");
+        return issues;
+    }, [form]);
 
-  async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
-    event.preventDefault();
-    if (validations.length > 0) {
-      setError(validations.join(" "));
-      return;
+    async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+        event.preventDefault();
+        if (validations.length > 0) {
+            setError(validations.join(" "));
+            return;
+        }
+
+        setIsLoading(true);
+        setError(null);
+        setMessage(null);
+        setCreatedLoan(null);
+
+        try {
+            const loan = await createLoan({
+                userId: form.userId,
+                amount: form.amount,
+                term: form.term,
+                interestRate: form.tea,
+                loanType: form.loanType,
+                monthlyPayment: form.monthlyIncome,
+            });
+
+            setCreatedLoan(loan);
+            setMessage(`Prestamo #${loan.id} creado correctamente.`);
+        } catch (submissionError: unknown) {
+            setError(getApiErrorMessage(submissionError));
+        } finally {
+            setIsLoading(false);
+        }
     }
 
-    setIsLoading(true);
-    setError(null);
-    setMessage(null);
-    setCreatedLoan(null);
+    return (
+        <Grid container spacing={3} sx={{ alignItems: "flex-start" }}>
 
-    try {
-      const loan = await createLoan({
-        userId: form.userId,
-        amount: form.amount,
-        term: form.term,
-        interestRate: form.tea,
-        loanType: form.loanType,
-      });
+            {/* ── Formulario ── */}
+            <Grid size={{ xs: 12, lg: 7 }}>
+                <Card elevation={1} sx={{ p: 4 }}>
+                    <Typography variant="h6" gutterBottom>Parámetros del préstamo</Typography>
+                    <Divider sx={{ mb: 3 }} />
 
-      setCreatedLoan(loan);
-      setMessage(`Prestamo #${loan.id} creado correctamente.`);
-    } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Ocurrio un error al crear el prestamo.");
-    } finally {
-      setIsLoading(false);
-    }
-  }
+                    <Box component="form" onSubmit={handleSubmit}>
 
-  return (
-    <Grid container spacing={3} sx={{ alignItems: "flex-start" }}>
+                        <Typography variant="overline" color="text.secondary">Solicitante</Typography>
+                        <Grid container spacing={2} sx={{ mt: 0.5, mb: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    label="Usuario"
+                                    value={form.userId}
+                                    onChange={(e) => setForm((c) => ({ ...c, userId: e.target.value }))}
+                                    fullWidth size="small"
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    label="Ingreso mensual"
+                                    type="number"
+                                    value={form.monthlyIncome}
+                                    onChange={(e) => setForm((c) => ({ ...c, monthlyIncome: Number(e.target.value) }))}
+                                    fullWidth size="small"
+                                    slotProps={{ htmlInput: { min: 0 } }}
+                                />
+                            </Grid>
+                        </Grid>
 
-      {/* ── Formulario ── */}
-      <Grid size={{ xs: 12, lg: 7 }}>
-        <Card elevation={1} sx={{ p: 4 }}>
-          <Typography variant="h6" gutterBottom>Parámetros del préstamo</Typography>
-          <Divider sx={{ mb: 3 }} />
+                        <Typography variant="overline" color="text.secondary">Condiciones</Typography>
+                        <Grid container spacing={2} sx={{ mt: 0.5, mb: 3 }}>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    label="Monto solicitado ($)"
+                                    type="number"
+                                    value={form.amount}
+                                    onChange={(e) => setForm((c) => ({ ...c, amount: Number(e.target.value) }))}
+                                    fullWidth size="small"
+                                    slotProps={{ htmlInput: { min: 500, max: 50000 } }}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    label="Plazo (meses)"
+                                    type="number"
+                                    value={form.term}
+                                    onChange={(e) => setForm((c) => ({ ...c, term: Number(e.target.value) }))}
+                                    fullWidth size="small"
+                                    slotProps={{ htmlInput: { min: 6, max: 60 } }}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    label="Tasa anual — TEA (%)"
+                                    type="number"
+                                    value={form.tea}
+                                    onChange={(e) => setForm((c) => ({ ...c, tea: Number(e.target.value) }))}
+                                    fullWidth size="small"
+                                    slotProps={{ htmlInput: { min: 18, max: 35 } }}
+                                />
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <FormControl fullWidth size="small">
+                                    <InputLabel>Tipo de préstamo</InputLabel>
+                                    <Select
+                                        label="Tipo de préstamo"
+                                        value={form.loanType}
+                                        onChange={(e) => setForm((c) => ({ ...c, loanType: Number(e.target.value) as 0 | 1 }))}
+                                    >
+                                        <MenuItem value={0}>Fijo (Sistema francés)</MenuItem>
+                                        <MenuItem value={1}>Decreciente (Sistema alemán)</MenuItem>
+                                    </Select>
+                                </FormControl>
+                            </Grid>
+                            <Grid size={{ xs: 12, sm: 6 }}>
+                                <TextField
+                                    label="Fecha primer pago"
+                                    type="date"
+                                    value={form.startDate}
+                                    onChange={(e) => setForm((c) => ({ ...c, startDate: e.target.value }))}
+                                    fullWidth size="small"
+                                    slotProps={{ inputLabel: { shrink: true } }}
+                                />
+                            </Grid>
+                        </Grid>
 
-          <Box component="form" onSubmit={handleSubmit}>
+                        {validations.length > 0 && (
+                            <Alert severity="warning" sx={{ mb: 2 }}>
+                                {validations.map((v) => <div key={v}>{v}</div>)}
+                            </Alert>
+                        )}
+                        {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
+                        {message && <Alert severity="success" sx={{ mb: 2 }}>{message}</Alert>}
 
-            <Typography variant="overline" color="text.secondary">Solicitante</Typography>
-            <Grid container spacing={2} sx={{ mt: 0.5, mb: 3 }}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Usuario"
-                  value={form.userId}
-                  onChange={(e) => setForm((c) => ({ ...c, userId: e.target.value }))}
-                  fullWidth size="small"
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Ingreso mensual"
-                  type="number"
-                  value={form.monthlyIncome}
-                  onChange={(e) => setForm((c) => ({ ...c, monthlyIncome: Number(e.target.value) }))}
-                  fullWidth size="small"
-                  slotProps={{ htmlInput: { min: 0 } }}
-                />
-              </Grid>
+                        <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
+                            <Button
+                                type="submit"
+                                variant="contained"
+                                disabled={isLoading || validations.length > 0}
+                                size="large"
+                                sx={{ flex: 1 }}
+                            >
+                                {isLoading ? "Procesando..." : "Crear préstamo"}
+                            </Button>
+                            {createdLoan && (
+                                <Button variant="outlined" size="large" component={Link} href={`/loans/${createdLoan.id}`}>
+                                    Ver detalle
+                                </Button>
+                            )}
+                        </Stack>
+                    </Box>
+                </Card>
             </Grid>
 
-            <Typography variant="overline" color="text.secondary">Condiciones</Typography>
-            <Grid container spacing={2} sx={{ mt: 0.5, mb: 3 }}>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Monto solicitado ($)"
-                  type="number"
-                  value={form.amount}
-                  onChange={(e) => setForm((c) => ({ ...c, amount: Number(e.target.value) }))}
-                  fullWidth size="small"
-                  slotProps={{ htmlInput: { min: 500, max: 50000 } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Plazo (meses)"
-                  type="number"
-                  value={form.term}
-                  onChange={(e) => setForm((c) => ({ ...c, term: Number(e.target.value) }))}
-                  fullWidth size="small"
-                  slotProps={{ htmlInput: { min: 6, max: 60 } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Tasa anual — TEA (%)"
-                  type="number"
-                  value={form.tea}
-                  onChange={(e) => setForm((c) => ({ ...c, tea: Number(e.target.value) }))}
-                  fullWidth size="small"
-                  slotProps={{ htmlInput: { min: 18, max: 35 } }}
-                />
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <FormControl fullWidth size="small">
-                  <InputLabel>Tipo de préstamo</InputLabel>
-                  <Select
-                    label="Tipo de préstamo"
-                    value={form.loanType}
-                    onChange={(e) => setForm((c) => ({ ...c, loanType: Number(e.target.value) as 0 | 1 }))}
-                  >
-                    <MenuItem value={0}>Fijo (Sistema francés)</MenuItem>
-                    <MenuItem value={1}>Decreciente (Sistema alemán)</MenuItem>
-                  </Select>
-                </FormControl>
-              </Grid>
-              <Grid size={{ xs: 12, sm: 6 }}>
-                <TextField
-                  label="Fecha primer pago"
-                  type="date"
-                  value={form.startDate}
-                  onChange={(e) => setForm((c) => ({ ...c, startDate: e.target.value }))}
-                  fullWidth size="small"
-                  slotProps={{ inputLabel: { shrink: true } }}
-                />
-              </Grid>
+            <Grid size={{ xs: 12, lg: 5 }}>
+                <Card elevation={2} sx={{ p: 3, bgcolor: "primary.main", color: "primary.contrastText", height: "100%" }}>
+                    <Typography variant="overline" sx={{ opacity: 0.75 }}>Resumen de simulación</Typography>
+                    <Typography variant="h5" sx={{ mt: 0.5, mb: 2.5 }}>
+                        {currency(form.amount)} a {form.term} meses
+                    </Typography>
+                    <Grid container spacing={1.5}>
+                        {[
+                            { label: "Cuota mensual", value: currency(simulation.monthlyPayment) },
+                            { label: "Interés total", value: currency(simulation.totalInterest) },
+                            { label: "TEA", value: `${form.tea.toFixed(2)}%` },
+                            { label: "TEM", value: `${(simulation.tem * 100).toFixed(4)}%` },
+                        ].map(({ label, value }) => (
+                            <Grid key={label} size={{ xs: 6 }}>
+                                <Box sx={{ bgcolor: "rgba(255,255,255,0.12)", borderRadius: 1, p: 1.5 }}>
+                                    <Typography variant="caption" sx={{ opacity: 0.75, display: "block" }}>{label}</Typography>
+                                    <Typography variant="body1" sx={{ fontWeight: 700 }}>{value}</Typography>
+                                </Box>
+                            </Grid>
+                        ))}
+                    </Grid>
+                    <Typography variant="caption" sx={{ display: "block", mt: 2, opacity: 0.65 }}>
+                        Regla: cuota activa + nueva cuota ≤ 40% del ingreso mensual.
+                    </Typography>
+                </Card>
             </Grid>
 
-            {validations.length > 0 && (
-              <Alert severity="warning" sx={{ mb: 2 }}>
-                {validations.map((v) => <div key={v}>{v}</div>)}
-              </Alert>
-            )}
-            {error && <Alert severity="error" sx={{ mb: 2 }}>{error}</Alert>}
-            {message && <Alert severity="success" sx={{ mb: 2 }}>{message}</Alert>}
+            <Grid size={{ xs: 12 }}>
+                <Card elevation={1} sx={{ p: 3 }}>
+                    <Typography variant="overline" color="text.secondary">Cronograma de pagos</Typography>
+                    <Typography variant="h6" sx={{ mt: 0.5, mb: 2 }}>Tabla de amortización</Typography>
+                    <Divider sx={{ mb: 2 }} />
+                    <PaymentScheduleTable schedule={simulation.schedule} showStatus={false} />
+                </Card>
+            </Grid>
 
-            <Stack direction="row" spacing={2} sx={{ alignItems: "center" }}>
-              <Button
-                type="submit"
-                variant="contained"
-                disabled={isLoading || validations.length > 0}
-                size="large"
-                sx={{ flex: 1 }}
-              >
-                {isLoading ? "Procesando..." : "Crear préstamo"}
-              </Button>
-              {createdLoan && (
-                <Button variant="outlined" size="large" component={Link} href={`/loans/${createdLoan.id}`}>
-                  Ver detalle
-                </Button>
-              )}
-            </Stack>
-          </Box>
-        </Card>
-      </Grid>
-
-      <Grid size={{ xs: 12, lg: 5 }}>
-        <Card elevation={2} sx={{ p: 3, bgcolor: "primary.main", color: "primary.contrastText", height: "100%" }}>
-          <Typography variant="overline" sx={{ opacity: 0.75 }}>Resumen de simulación</Typography>
-          <Typography variant="h5" sx={{ mt: 0.5, mb: 2.5 }}>
-            {currency(form.amount)} a {form.term} meses
-          </Typography>
-          <Grid container spacing={1.5}>
-            {[
-              { label: "Cuota mensual", value: currency(simulation.monthlyPayment) },
-              { label: "Interés total", value: currency(simulation.totalInterest) },
-              { label: "TEA", value: `${form.tea.toFixed(2)}%` },
-              { label: "TEM", value: `${(simulation.tem * 100).toFixed(4)}%` },
-            ].map(({ label, value }) => (
-              <Grid key={label} size={{ xs: 6 }}>
-                <Box sx={{ bgcolor: "rgba(255,255,255,0.12)", borderRadius: 1, p: 1.5 }}>
-                  <Typography variant="caption" sx={{ opacity: 0.75, display: "block" }}>{label}</Typography>
-                  <Typography variant="body1" sx={{ fontWeight: 700 }}>{value}</Typography>
-                </Box>
-              </Grid>
-            ))}
-          </Grid>
-          <Typography variant="caption" sx={{ display: "block", mt: 2, opacity: 0.65 }}>
-            Regla: cuota activa + nueva cuota ≤ 40% del ingreso mensual.
-          </Typography>
-        </Card>
-      </Grid>
-
-      <Grid size={{ xs: 12 }}>
-        <Card elevation={1} sx={{ p: 3 }}>
-          <Typography variant="overline" color="text.secondary">Cronograma de pagos</Typography>
-          <Typography variant="h6" sx={{ mt: 0.5, mb: 2 }}>Tabla de amortización</Typography>
-          <Divider sx={{ mb: 2 }} />
-          <PaymentScheduleTable schedule={simulation.schedule} showStatus={false} />
-        </Card>
-      </Grid>
-
-    </Grid>
-  );
+        </Grid>
+    );
 }

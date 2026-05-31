@@ -47,6 +47,7 @@ export interface CreateLoanInput {
   term: number;
   interestRate: number;
   loanType: 0 | 1;
+  monthlyPayment: number;
 }
 
 export interface LoanSimulationResult {

@@ -49,6 +49,7 @@ type CreateLoanDto = {
   term: number;
   interestRate: number;
   loanType: 0 | 1;
+  monthlyPayment: number;
 };
 
 function mapLoanStatus(status: number): Loan["status"] {
@@ -160,6 +161,7 @@ function buildCreateLoanDto(input: CreateLoanInput): CreateLoanDto {
     term: input.term,
     interestRate: input.interestRate,
     loanType: input.loanType,
+    monthlyPayment: input.monthlyPayment,
   };
 }
 

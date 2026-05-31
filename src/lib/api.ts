@@ -1,6 +1,6 @@
 import axios, { type AxiosRequestConfig } from "axios";
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_BASE_URL ?? "https://localhost:7221/api";
+const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? "https://localhost:7221/api";
 
 type RequestOptions = Omit<AxiosRequestConfig, "params"> & {
   query?: Record<string, string | number | boolean | undefined>;

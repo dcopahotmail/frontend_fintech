@@ -19,8 +19,8 @@ const DRAWER_WIDTH = 240;
 
 const navItems = [
   { label: "Inicio", href: "/", icon: <HomeIcon /> },
-  { label: "Préstamos", href: "/loans", icon: <AccountBalanceIcon /> },
   { label: "Simulador", href: "/loans/simulate", icon: <AddIcon /> },
+  { label: "Préstamos", href: "/loans", icon: <AccountBalanceIcon /> },
   { label: "Transacciones", href: "/transactions", icon: <SwapHorizIcon /> },
 ];
 

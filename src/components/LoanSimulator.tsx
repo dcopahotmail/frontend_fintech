@@ -115,12 +115,11 @@ export function LoanSimulator({ initialValues }: LoanSimulatorProps) {
 
           <Box component="form" onSubmit={handleSubmit}>
 
-            {/* Sección: Solicitante */}
             <Typography variant="overline" color="text.secondary">Solicitante</Typography>
             <Grid container spacing={2} sx={{ mt: 0.5, mb: 3 }}>
               <Grid size={{ xs: 12, sm: 6 }}>
                 <TextField
-                  label="ID de usuario"
+                  label="Usuario"
                   value={form.userId}
                   onChange={(e) => setForm((c) => ({ ...c, userId: e.target.value }))}
                   fullWidth size="small"
@@ -138,7 +137,6 @@ export function LoanSimulator({ initialValues }: LoanSimulatorProps) {
               </Grid>
             </Grid>
 
-            {/* Sección: Condiciones */}
             <Typography variant="overline" color="text.secondary">Condiciones</Typography>
             <Grid container spacing={2} sx={{ mt: 0.5, mb: 3 }}>
               <Grid size={{ xs: 12, sm: 6 }}>
@@ -224,7 +222,6 @@ export function LoanSimulator({ initialValues }: LoanSimulatorProps) {
         </Card>
       </Grid>
 
-      {/* ── Panel derecho: Resumen ── */}
       <Grid size={{ xs: 12, lg: 5 }}>
         <Card elevation={2} sx={{ p: 3, bgcolor: "primary.main", color: "primary.contrastText", height: "100%" }}>
           <Typography variant="overline" sx={{ opacity: 0.75 }}>Resumen de simulación</Typography>
@@ -252,13 +249,12 @@ export function LoanSimulator({ initialValues }: LoanSimulatorProps) {
         </Card>
       </Grid>
 
-      {/* ── Cronograma al final ── */}
       <Grid size={{ xs: 12 }}>
         <Card elevation={1} sx={{ p: 3 }}>
           <Typography variant="overline" color="text.secondary">Cronograma de pagos</Typography>
           <Typography variant="h6" sx={{ mt: 0.5, mb: 2 }}>Tabla de amortización</Typography>
           <Divider sx={{ mb: 2 }} />
-          <PaymentScheduleTable schedule={simulation.schedule} />
+          <PaymentScheduleTable schedule={simulation.schedule} showStatus={false} />
         </Card>
       </Grid>
 

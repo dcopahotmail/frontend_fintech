@@ -37,14 +37,14 @@ const typeLabel: Record<string, string> = {
 };
 
 type TransactionListProps = {
-  transactions: Transaction[];
+  transactions: Array<Transaction & { userId?: string | null }>;
 };
 
 export function TransactionList({ transactions }: TransactionListProps) {
   if (transactions.length === 0) {
     return (
       <Card variant="outlined" sx={{ p: 5, textAlign: "center" }}>
-        <Typography color="text.secondary">El backend no devolvio transacciones todavia.</Typography>
+        <Typography color="text.secondary">Sin transacciones.</Typography>
       </Card>
     );
   }
@@ -54,8 +54,6 @@ export function TransactionList({ transactions }: TransactionListProps) {
       <Table>
         <TableHead>
           <TableRow sx={{ bgcolor: "grey.50" }}>
-            <TableCell>Transaccion</TableCell>
-            <TableCell>Idempotency key</TableCell>
             <TableCell>Prestamo</TableCell>
             <TableCell>Tipo</TableCell>
             <TableCell align="right">Monto</TableCell>
@@ -67,17 +65,13 @@ export function TransactionList({ transactions }: TransactionListProps) {
           {transactions.map((transaction) => (
             <TableRow key={transaction.id} hover>
               <TableCell>
-                <Typography variant="body2" sx={{ fontWeight: 600 }}>TX #{transaction.id}</Typography>
-                <Typography variant="caption" color="text.secondary">
-                  {transaction.description ?? "Sin descripcion"}
+                <Typography variant="body2" sx={{ fontWeight: 600 }}>
+                  {transaction.loanId !== null ? `#${transaction.loanId}` : "Sin prestamo"} - {transaction.userId ?? "No asignado"}
+                </Typography>
+                <Typography variant="caption" color="text.secondary" sx={{ fontFamily: "monospace" }}>
+                  {transaction.idempotencyKey ?? "Error"}
                 </Typography>
               </TableCell>
-              <TableCell>
-                <Typography variant="caption" sx={{ fontFamily: "monospace" }}>
-                  {transaction.idempotencyKey ?? "No informado"}
-                </Typography>
-              </TableCell>
-              <TableCell>{transaction.loanId ?? "Sin prestamo"}</TableCell>
               <TableCell>{typeLabel[transaction.type] ?? transaction.type}</TableCell>
               <TableCell align="right"><strong>{currency(transaction.amount)}</strong></TableCell>
               <TableCell>

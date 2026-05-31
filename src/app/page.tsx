@@ -1,10 +1,8 @@
-﻿import Box from "@mui/material/Box";
-
-export const dynamic = "force-dynamic";
+﻿export const dynamic = "force-dynamic";
 
 import { getLoans } from "@/services/loanService";
 import { getTransactions } from "@/services/transactionService";
-import HomeContent from "./HomeContent";
+import HomeContent from "@/app/HomeContent";
 
 export default async function Home() {
   const [loans, transactions] = await Promise.all([

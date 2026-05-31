@@ -1,9 +1,14 @@
 ﻿"use client";
 
 import Alert from "@mui/material/Alert";
+import AddIcon from "@mui/icons-material/Add";
 import Box from "@mui/material/Box";
 import Button from "@mui/material/Button";
 import Card from "@mui/material/Card";
+import Dialog from "@mui/material/Dialog";
+import DialogActions from "@mui/material/DialogActions";
+import DialogContent from "@mui/material/DialogContent";
+import DialogTitle from "@mui/material/DialogTitle";
 import FormControl from "@mui/material/FormControl";
 import Grid from "@mui/material/Grid";
 import InputLabel from "@mui/material/InputLabel";
@@ -16,213 +21,220 @@ import { useMemo, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import { TransactionList } from "@/components/TransactionList";
+import { createTransaction } from "@/services/transactionService";
 import type { Loan } from "@/types/loan";
 import type { CreateTransactionInput, Transaction } from "@/types/transaction";
 
 type TransactionWorkbenchProps = {
-  initialTransactions: Transaction[];
-  loans: Loan[];
+    initialTransactions: Transaction[];
+    loans: Loan[];
 };
 
 export function TransactionWorkbench({ initialTransactions, loans }: TransactionWorkbenchProps) {
-  const [transactions, setTransactions] = useState(initialTransactions);
-  const [typeFilter, setTypeFilter] = useState<"" | "0" | "1" | "2">("");
-  const [statusFilter, setStatusFilter] = useState<"" | "0" | "1" | "2">("");
-  const [form, setForm] = useState<CreateTransactionInput>({
-    idempotencyKey: uuidv4(),
-    type: 1,
-    amount: 150,
-    loanId: null,
-    description: "Pago de prueba desde frontend",
-  });
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-  const [error, setError] = useState<string | null>(null);
-
-  const filteredTransactions = useMemo(() => {
-    return transactions.filter((item) => {
-      const matchesType =
-        typeFilter === "" ||
-        (typeFilter === "0" && item.type === "Disbursement") ||
-        (typeFilter === "1" && item.type === "Payment") ||
-        (typeFilter === "2" && item.type === "Transfer");
-      const matchesStatus =
-        statusFilter === "" ||
-        (statusFilter === "0" && item.status === "Pending") ||
-        (statusFilter === "1" && item.status === "Completed") ||
-        (statusFilter === "2" && item.status === "Failed");
-      return matchesType && matchesStatus;
+    const [transactions, setTransactions] = useState(initialTransactions);
+    const [typeFilter, setTypeFilter] = useState<"" | "0" | "1" | "2">("");
+    const [statusFilter, setStatusFilter] = useState<"" | "0" | "1" | "2">("");
+    const [isDialogOpen, setIsDialogOpen] = useState(false);
+    const [userIdFilter, setUserIdFilter] = useState("");
+    const [form, setForm] = useState<CreateTransactionInput>({
+        idempotencyKey: uuidv4(),
+        type: 1,
+        amount: 150,
+        loanId: null,
+        description: "Pago de prueba desde frontend",
     });
-  }, [transactions, typeFilter, statusFilter]);
+    const [isSubmitting, setIsSubmitting] = useState(false);
+    const [message, setMessage] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
 
-  async function submitTransaction(sendDuplicate: boolean) {
-    setIsSubmitting(true);
-    setError(null);
-    setMessage(null);
-    try {
-      const first = await fetch("/api/transactions", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
-      });
-      const firstBody = (await first.json()) as Transaction | { message: string };
-      if (!first.ok) throw new Error("message" in firstBody ? firstBody.message : "No se pudo crear transaccion.");
+    const loanUserById = useMemo(() => {
+        return new Map(loans.map((loan) => [loan.id, loan.userId]));
+    }, [loans]);
 
-      let lastTransaction = firstBody as Transaction;
-      let deduplicated = false;
+    const filteredTransactions = useMemo(() => {
+        return transactions
+            .filter((item) => {
+                const matchesType =
+                    typeFilter === "" ||
+                    (typeFilter === "0" && item.type === "Disbursement") ||
+                    (typeFilter === "1" && item.type === "Payment") ||
+                    (typeFilter === "2" && item.type === "Transfer");
+                const matchesStatus =
+                    statusFilter === "" ||
+                    (statusFilter === "0" && item.status === "Pending") ||
+                    (statusFilter === "1" && item.status === "Completed") ||
+                    (statusFilter === "2" && item.status === "Failed");
+                return matchesType && matchesStatus;
+            })
+            .map((item) => ({
+                ...item,
+                userId: item.loanId !== null ? (loanUserById.get(item.loanId) ?? null) : null,
+            }));
+    }, [transactions, typeFilter, statusFilter, loanUserById]);
 
-      if (sendDuplicate) {
-        const second = await fetch("/api/transactions", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(form),
+    function openCreateDialog() {
+        setError(null);
+        setMessage(null);
+        setUserIdFilter("");
+        setForm({
+            idempotencyKey: uuidv4(),
+            type: 1,
+            amount: 150,
+            loanId: null,
+            description: "Pago de prueba desde frontend",
         });
-        const secondBody = (await second.json()) as Transaction | { message: string };
-        if (!second.ok) throw new Error("message" in secondBody ? secondBody.message : "Fallo al reenviar transaccion.");
-        lastTransaction = secondBody as Transaction;
-        deduplicated = lastTransaction.id === (firstBody as Transaction).id;
-      }
-
-      setTransactions((current) => {
-        const exists = current.some((item) => item.id === lastTransaction.id);
-        return exists ? current : [lastTransaction, ...current];
-      });
-      setMessage(
-        sendDuplicate
-          ? deduplicated
-            ? `Idempotencia validada: la segunda solicitud devolvio la transaccion #${lastTransaction.id}.`
-            : "Se enviaron dos solicitudes y se crearon transacciones diferentes."
-          : `Transaccion #${lastTransaction.id} creada correctamente.`,
-      );
-    } catch (submissionError) {
-      setError(submissionError instanceof Error ? submissionError.message : "Ocurrio un error al crear la transaccion.");
-    } finally {
-      setIsSubmitting(false);
+        setIsDialogOpen(true);
     }
-  }
 
-  return (
-    <Stack spacing={3}>
-      <Card elevation={1} sx={{ p: 3 }}>
-        <Typography variant="h6" gutterBottom>Filtros y nueva transaccion</Typography>
-        <Grid container spacing={2.5}>
-          {/* Filters */}
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Filtro por tipo</InputLabel>
-              <Select
-                label="Filtro por tipo"
-                value={typeFilter}
-                onChange={(e) => setTypeFilter(e.target.value as "" | "0" | "1" | "2")}
-              >
-                <MenuItem value="">Todos</MenuItem>
-                <MenuItem value="0">Desembolso</MenuItem>
-                <MenuItem value="1">Pago</MenuItem>
-                <MenuItem value="2">Transferencia</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 12, sm: 6, md: 3 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Filtro por estado</InputLabel>
-              <Select
-                label="Filtro por estado"
-                value={statusFilter}
-                onChange={(e) => setStatusFilter(e.target.value as "" | "0" | "1" | "2")}
-              >
-                <MenuItem value="">Todos</MenuItem>
-                <MenuItem value="0">Pendiente</MenuItem>
-                <MenuItem value="1">Completada</MenuItem>
-                <MenuItem value="2">Fallida</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
+    function closeCreateDialog() {
+        if (!isSubmitting) {
+            setIsDialogOpen(false);
+        }
+    }
 
-          {/* Form fields */}
-          <Grid size={{ xs: 12, md: 6 }}>
-            <TextField
-              label="Idempotency key"
-              value={form.idempotencyKey}
-              onChange={(e) => setForm((c) => ({ ...c, idempotencyKey: e.target.value }))}
-              fullWidth size="small"
-              slotProps={{ input: { style: { fontFamily: "monospace", fontSize: "0.8rem" } } }}
-            />
-          </Grid>
-          <Grid size={{ xs: 6, md: 3 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Tipo</InputLabel>
-              <Select
-                label="Tipo"
-                value={form.type}
-                onChange={(e) => setForm((c) => ({ ...c, type: Number(e.target.value) as 0 | 1 | 2 }))}
-              >
-                <MenuItem value={0}>Desembolso</MenuItem>
-                <MenuItem value={1}>Pago</MenuItem>
-                <MenuItem value={2}>Transferencia</MenuItem>
-              </Select>
-            </FormControl>
-          </Grid>
-          <Grid size={{ xs: 6, md: 3 }}>
-            <TextField
-              label="Monto"
-              type="number"
-              value={form.amount}
-              onChange={(e) => setForm((c) => ({ ...c, amount: Number(e.target.value) }))}
-              fullWidth size="small"
-              slotProps={{ htmlInput: { min: 0.01 } }}
-            />
-          </Grid>
-          <Grid size={{ xs: 12, md: 6 }}>
-            <FormControl fullWidth size="small">
-              <InputLabel>Prestamo asociado (opcional)</InputLabel>
-              <Select
-                label="Prestamo asociado (opcional)"
-                value={form.loanId !== null ? String(form.loanId) : ""}
-                onChange={(e) =>
-                  setForm((c) => ({ ...c, loanId: e.target.value === "" ? null : Number(e.target.value) }))
-                }
-              >
-                <MenuItem value="">Sin prestamo</MenuItem>
-                {loans.map((loan) => (
-                  <MenuItem key={loan.id} value={loan.id}>
-                    #{loan.id} - {loan.userId}
-                  </MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-          </Grid>
-        </Grid>
+    async function submitTransaction() {
+        setIsSubmitting(true);
+        setError(null);
+        setMessage(null);
+        try {
+            const created = await createTransaction(form);
 
-        {message && <Alert severity="success" sx={{ mt: 2 }}>{message}</Alert>}
-        {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+            setTransactions((current) => {
+                const exists = current.some((item) => item.id === created.id);
+                return exists ? current : [created, ...current];
+            });
+            setMessage(`Transaccion #${created.id} creada correctamente.`);
+            setIsDialogOpen(false);
+        } catch (submissionError) {
+            setError(submissionError instanceof Error ? submissionError.message : "Ocurrio un error al crear la transaccion.");
+        } finally {
+            setIsSubmitting(false);
+        }
+    }
 
-        <Box sx={{ mt: 2.5 }}>
-          <Stack direction="row" sx={{ gap: 1.5, flexWrap: "wrap" }}>
-            <Button
-              variant="contained"
-              onClick={() => submitTransaction(false)}
-              disabled={isSubmitting}
-            >
-              {isSubmitting ? "Procesando..." : "Crear transaccion de prueba"}
-            </Button>
-            <Button
-              variant="outlined"
-              onClick={() => submitTransaction(true)}
-              disabled={isSubmitting}
-            >
-              Enviar dos veces (probar idempotencia)
-            </Button>
-            <Button
-              variant="text"
-              onClick={() => setForm((c) => ({ ...c, idempotencyKey: uuidv4() }))}
-            >
-              Generar nueva key
-            </Button>
-          </Stack>
-        </Box>
-      </Card>
+    return (
+        <Stack spacing={3}>
+            <Card elevation={1} sx={{ p: 3 }}>
+                <Typography variant="h6" gutterBottom>Filtros</Typography>
+                <Grid container spacing={2.5}>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <FormControl fullWidth size="small">
+                            <InputLabel>Filtro por tipo</InputLabel>
+                            <Select
+                                label="Filtro por tipo"
+                                value={typeFilter}
+                                onChange={(e) => setTypeFilter(e.target.value as "" | "0" | "1" | "2")}
+                            >
+                                <MenuItem value="">Todos</MenuItem>
+                                <MenuItem value="0">Desembolso</MenuItem>
+                                <MenuItem value="1">Pago</MenuItem>
+                                <MenuItem value="2">Transferencia</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                    <Grid size={{ xs: 12, sm: 6, md: 3 }}>
+                        <FormControl fullWidth size="small">
+                            <InputLabel>Filtro por estado</InputLabel>
+                            <Select
+                                label="Filtro por estado"
+                                value={statusFilter}
+                                onChange={(e) => setStatusFilter(e.target.value as "" | "0" | "1" | "2")}
+                            >
+                                <MenuItem value="">Todos</MenuItem>
+                                <MenuItem value="0">Pendiente</MenuItem>
+                                <MenuItem value="1">Completada</MenuItem>
+                                <MenuItem value="2">Fallida</MenuItem>
+                            </Select>
+                        </FormControl>
+                    </Grid>
+                </Grid>
+            </Card>
 
-      <TransactionList transactions={filteredTransactions} />
-    </Stack>
-  );
+            <Dialog open={isDialogOpen} onClose={closeCreateDialog} fullWidth maxWidth="sm">
+                <DialogTitle>Simular transaccion</DialogTitle>
+                <DialogContent>
+                    <Stack spacing={2}>
+                        <Box sx={{ p: 1.5, border: 1, borderColor: "divider", borderRadius: 1.5, bgcolor: "grey.50" }}>
+                            <Stack direction="row" sx={{ justifyContent: "space-between", alignItems: "center", mb: 1 }}>
+                                <Typography variant="caption" color="text.secondary">Idempotency Key</Typography>
+                            </Stack>
+                            <Typography
+                                variant="body2"
+                                sx={{
+                                    fontFamily: "monospace",
+                                    fontSize: "0.82rem",
+                                    lineHeight: 1.5,
+                                    whiteSpace: "normal",
+                                    overflowWrap: "anywhere",
+                                }}
+                            >
+                                {form.idempotencyKey}
+                            </Typography>
+                        </Box>
+
+                        <FormControl fullWidth size="small">
+                            <InputLabel>Prestamo asociado</InputLabel>
+                            <Select
+                                label="Prestamo asociado"
+                                value={form.loanId !== null ? String(form.loanId) : ""}
+                                onChange={(e) => {
+                                    const value = e.target.value;
+                                    setForm((current) => ({
+                                        ...current,
+                                        loanId: value === "" ? null : Number(value),
+                                    }));
+                                }}
+                            >
+                                <MenuItem value="">Sin prestamo</MenuItem>
+                                {loans.map((loan) => (
+                                    <MenuItem key={loan.id} value={String(loan.id)}>
+                                        #{loan.id} - {loan.userId} - ${loan.amount.toLocaleString("en-US")}
+                                    </MenuItem>
+                                ))}
+                            </Select>
+                        </FormControl>
+
+                        <FormControl fullWidth size="small">
+                            <InputLabel>Tipo</InputLabel>
+                            <Select
+                                label="Tipo"
+                                value={form.type}
+                                onChange={(e) => setForm((current) => ({ ...current, type: Number(e.target.value) as 0 | 1 | 2 }))}
+                            >
+                                <MenuItem value={0}>Desembolso</MenuItem>
+                                <MenuItem value={1}>Pago</MenuItem>
+                                <MenuItem value={2}>Transferencia</MenuItem>
+                            </Select>
+                        </FormControl>
+
+                        <TextField
+                            label="Monto"
+                            type="number"
+                            value={form.amount}
+                            onChange={(e) => setForm((current) => ({ ...current, amount: Number(e.target.value) }))}
+                            size="small"
+                            fullWidth
+                            slotProps={{ htmlInput: { min: 0.01 } }}
+                        />
+                    </Stack>
+                </DialogContent>
+                <DialogActions>
+                    <Button onClick={closeCreateDialog} disabled={isSubmitting}>Cancelar</Button>
+                    <Button onClick={submitTransaction} variant="contained" disabled={isSubmitting || form.amount <= 0 || !form.idempotencyKey.trim()}>
+                        {isSubmitting ? "Procesando..." : "Simular Pago"}
+                    </Button>
+                </DialogActions>
+            </Dialog>
+
+            <Box sx={{ display: "flex", justifyContent: "flex-end" }}>
+                <Button sx={{ borderRadius: '2rem' }} startIcon={<AddIcon />} variant="contained" onClick={openCreateDialog}>
+                    Simular transaccion
+                </Button>
+            </Box>
+
+            {message && <Alert severity="success" sx={{ mt: 2 }}>{message}</Alert>}
+            {error && <Alert severity="error" sx={{ mt: 2 }}>{error}</Alert>}
+            <TransactionList transactions={filteredTransactions} />
+        </Stack>
+    );
 }
